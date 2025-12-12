@@ -1,0 +1,5 @@
+{
+  "name": "Sales Performance Dashboard",
+  "description": "A comprehensive dashboard for jewelry sales analysis with Excel upload, showroom filtering, staff ranking, and admin-protected sensitive data.",
+  "requestFramePermissions": []
+}
