@@ -1,4 +1,3 @@
-
 import { RawSalesData, AggregatedStaffData, FilterState, DashboardMetrics } from '../types';
 
 export const getStaffId = (item: RawSalesData): string => {
@@ -17,6 +16,15 @@ export const getStaffId = (item: RawSalesData): string => {
   return uniqueId;
 };
 
+// Helper to safely parse numbers from Excel which might have commas or be strings
+const parseNumber = (val: any): number => {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  const strVal = String(val).replace(/,/g, '').trim();
+  const num = Number(strVal);
+  return isNaN(num) ? 0 : num;
+};
+
 export const processSalesData = (data: RawSalesData[], filters: FilterState) => {
   // 1. Filter Data
   const filtered = data.filter((item) => {
@@ -33,8 +41,6 @@ export const processSalesData = (data: RawSalesData[], filters: FilterState) => 
     const uniqueId = getStaffId(item);
     
     // Determine display code (if it was generated from name, show N/A or empty)
-    const isGenerated = uniqueId.includes(item.SalesmanName || 'Unknown'); 
-    // A simple heuristic: if ID matches the composite pattern or original code was 0
     const originalCode = String(item.SalesmanCode);
     const displayCode = (!originalCode || originalCode === '0' || originalCode === 'undefined') ? 'N/A' : originalCode;
 
@@ -56,9 +62,9 @@ export const processSalesData = (data: RawSalesData[], filters: FilterState) => 
 
     const staff = staffMap.get(uniqueId)!;
     
-    // Parse values to ensure they are numbers (handle potential dirty excel data)
-    const sales = Number(item.TotalSales) || 0;
-    const cross = Number(item.CrossSales) || 0;
+    // Parse values robustly
+    const sales = parseNumber(item.TotalSales);
+    const cross = parseNumber(item.CrossSales);
 
     staff.totalSales += sales;
     staff.crossSales += cross;
@@ -93,8 +99,8 @@ export const processSalesData = (data: RawSalesData[], filters: FilterState) => 
   });
 
   // 5. Dashboard Metrics
-  const totalSales = filtered.reduce((acc, curr) => acc + (Number(curr.TotalSales) || 0), 0);
-  const totalCrossSales = filtered.reduce((acc, curr) => acc + (Number(curr.CrossSales) || 0), 0);
+  const totalSales = filtered.reduce((acc, curr) => acc + parseNumber(curr.TotalSales), 0);
+  const totalCrossSales = filtered.reduce((acc, curr) => acc + parseNumber(curr.CrossSales), 0);
   const crossSalePercentage = totalSales > 0 ? (totalCrossSales / totalSales) * 100 : 0;
 
   // Aggregate Product Categories for Chart
@@ -105,12 +111,13 @@ export const processSalesData = (data: RawSalesData[], filters: FilterState) => 
     productCategories.forEach(cat => {
       // Basic normalization of keys from Excel
       // Try exact match, then case insensitive match
-      let val = Number(item[cat]);
-      if (isNaN(val)) {
-         const key = Object.keys(item).find(k => k.toLowerCase().includes(cat.toLowerCase()));
-         val = key ? Number(item[key]) : 0;
+      let val = parseNumber(item[cat]);
+      if (val === 0) {
+         // Try to find key loosely
+         const key = Object.keys(item).find(k => k.toLowerCase().replace(/[^a-z]/g, '') === cat.toLowerCase().replace(/[^a-z]/g, ''));
+         val = key ? parseNumber(item[key]) : 0;
       }
-      topProductsMap.set(cat, (topProductsMap.get(cat) || 0) + (val || 0));
+      topProductsMap.set(cat, (topProductsMap.get(cat) || 0) + val);
     });
   });
 

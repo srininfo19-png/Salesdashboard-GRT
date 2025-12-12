@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { LayoutDashboard, Users, ShoppingBag, TrendingUp, Filter, MoreVertical, X, Lock } from 'lucide-react';
+import { LayoutDashboard, Users, ShoppingBag, TrendingUp, Filter, MoreVertical, X, Lock, Save, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StaffTable } from './components/StaffTable';
 import { AdminToggle } from './components/AdminToggle';
@@ -22,28 +21,40 @@ const App: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   // Load initial data
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const data = await db.getData();
-        if (data && data.length > 0) {
-          setRawData(data);
-        }
-      } catch (e) {
-        console.error("Failed to load data", e);
-      } finally {
-        setIsLoading(false);
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await db.getData();
+      if (data && data.length > 0) {
+        setRawData(data);
       }
-    };
+    } catch (e) {
+      console.error("Failed to load data", e);
+      setNotification({ type: 'error', message: 'Failed to load data from cloud.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
+
+  // Clear notification after 3 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   // Persist Training Status Changes
   const handleStatusUpdate = async (id: string, status: string) => {
     // We update all raw records that match this staff ID.
-    // This ensures consistency next time data is aggregated.
     const newRawData = rawData.map(d => {
       const currentId = getStaffId(d);
       if (currentId === id) {
@@ -53,14 +64,28 @@ const App: React.FC = () => {
     });
 
     setRawData(newRawData);
-    // Debounce save or save immediately
-    await db.updateTrainingStatus(newRawData);
+    // Silent save in background
+    try {
+      await db.updateTrainingStatus(newRawData);
+    } catch (e) {
+      console.error("Failed to save status update", e);
+      setNotification({ type: 'error', message: 'Failed to save status change. Check internet.' });
+    }
   };
 
   const handleDataLoaded = async (data: RawSalesData[]) => {
-    setRawData(data);
-    setShowUploadModal(false);
-    await db.saveData(data); // Persist to DB/Local
+    setIsSaving(true);
+    try {
+      setRawData(data); // Optimistic update
+      await db.saveData(data); // Persist to DB
+      setNotification({ type: 'success', message: 'Data uploaded and saved to cloud successfully!' });
+      setShowUploadModal(false);
+    } catch (error) {
+      console.error("Save failed", error);
+      setNotification({ type: 'error', message: 'Failed to save data to database. Please check your internet or Supabase settings.' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Memoize unique filter options based on raw data
@@ -80,13 +105,30 @@ const App: React.FC = () => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading...</div>;
+  if (isLoading && rawData.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-gray-500 gap-2">
+         <RefreshCw className="animate-spin text-blue-500" size={32} />
+         <p>Loading sales data...</p>
+      </div>
+    );
   }
 
   // MAIN DASHBOARD VIEW
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
+    <div className="min-h-screen bg-gray-50 pb-12 relative">
+      
+      {/* Toast Notification */}
+      {notification && (
+        <div className={`fixed top-20 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 ${
+          notification.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {notification.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {notification.message}
+          <button onClick={() => setNotification(null)} className="ml-2 hover:opacity-75"><X size={14} /></button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -95,11 +137,19 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold text-gray-900 hidden sm:block">Sales Performance</h1>
             <h1 className="text-xl font-bold text-gray-900 sm:hidden">Dashboard</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
              <div className="text-xs text-gray-400 hidden md:block">
                Last updated: {new Date().toLocaleTimeString()}
              </div>
              
+             <button 
+                onClick={loadData}
+                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                title="Refresh Data"
+             >
+                <RefreshCw size={18} />
+             </button>
+
              <AdminToggle 
               isAdmin={isAdmin} 
               onLoginSuccess={() => setIsAdmin(true)} 
@@ -134,7 +184,7 @@ const App: React.FC = () => {
                       </button>
                     ) : (
                       <div className="px-4 py-2 text-xs text-gray-400 italic">
-                        Admin access required for actions
+                        Admin access required to upload
                       </div>
                     )}
                   </div>
@@ -145,19 +195,29 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Upload Modal (Triggered by 3 dots) */}
+      {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 relative">
-            <button 
-              onClick={() => setShowUploadModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X size={20} />
-            </button>
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Update Sales Data</h3>
-            <p className="text-sm text-gray-500 mb-6">Uploading a new file will overwrite the current sales data. Training statuses for matching staff IDs will be preserved if possible.</p>
-            <FileUpload onDataLoaded={handleDataLoaded} />
+            {isSaving ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <RefreshCw className="animate-spin text-blue-600 mb-4" size={48} />
+                <h3 className="text-lg font-semibold text-gray-900">Saving to Database...</h3>
+                <p className="text-sm text-gray-500">Please do not close this window.</p>
+              </div>
+            ) : (
+              <>
+                <button 
+                  onClick={() => setShowUploadModal(false)}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={20} />
+                </button>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Update Sales Data</h3>
+                <p className="text-sm text-gray-500 mb-6">Uploading a new file will overwrite the current sales data. Training statuses for matching staff IDs will be preserved if possible.</p>
+                <FileUpload onDataLoaded={handleDataLoaded} />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -201,13 +261,16 @@ const App: React.FC = () => {
         </div>
 
         {/* Empty State Banner for Admins */}
-        {isAdmin && rawData.length === 0 && (
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 text-center">
-            <h3 className="text-blue-900 font-semibold text-lg mb-2">Setup Required</h3>
-            <p className="text-blue-700 mb-4">The dashboard is currently empty. Use the menu above or the button below to upload data.</p>
+        {isAdmin && rawData.length === 0 && !isLoading && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-8 text-center">
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Save size={24} />
+            </div>
+            <h3 className="text-blue-900 font-bold text-lg mb-2">Setup Required</h3>
+            <p className="text-blue-700 mb-6 max-w-md mx-auto">The dashboard is currently empty. Upload your Excel file to save data to the cloud database.</p>
             <button 
               onClick={() => setShowUploadModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm hover:shadow-md"
             >
               Upload Data Now
             </button>
