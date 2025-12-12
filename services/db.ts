@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { RawSalesData } from '../types';
+import { getStaffId } from '../utils/dataHelpers';
 
 // --- CONFIGURATION ---
 // Helper to safely get env vars in Vite or CRA environments
@@ -37,21 +38,38 @@ export const db = {
   // Fetch data
   getData: async (): Promise<RawSalesData[]> => {
     if (USE_SUPABASE && supabase) {
-      // Fetch the row with id 'latest'
+      // Fetch both the main data ('latest') and the training status overrides ('training_map')
+      // This reduces data transfer when only updating statuses
       const { data, error } = await supabase
         .from('sales_data')
-        .select('data')
-        .eq('id', 'latest')
-        .single();
+        .select('*')
+        .in('id', ['latest', 'training_map']);
       
       if (error) {
-        // If error is "Row not found", it just means it's the first time running.
         if (error.code !== 'PGRST116') {
           console.error('Supabase fetch error:', error);
         }
         return [];
       }
-      return data?.data || [];
+
+      const latestRow = data?.find((r: any) => r.id === 'latest');
+      const mapRow = data?.find((r: any) => r.id === 'training_map');
+
+      const rawData: RawSalesData[] = latestRow?.data || [];
+      const statusMap: Record<string, string> = mapRow?.data || {};
+
+      // Merge Overrides: Apply status map to the raw data
+      if (Object.keys(statusMap).length > 0 && rawData.length > 0) {
+        return rawData.map(item => {
+           const id = getStaffId(item);
+           if (statusMap[id]) {
+             return { ...item, TrainingStatus: statusMap[id] };
+           }
+           return item;
+        });
+      }
+
+      return rawData;
     } else {
       // Fallback to LocalStorage
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -59,10 +77,10 @@ export const db = {
     }
   },
 
-  // Save full dataset
+  // Save full dataset (Used when uploading Excel)
   saveData: async (data: RawSalesData[]): Promise<void> => {
     if (USE_SUPABASE && supabase) {
-      // Upsert: Insert if 'latest' doesn't exist, update if it does
+      // Save the heavy excel data to 'latest'
       const { error } = await supabase
         .from('sales_data')
         .upsert({ id: 'latest', data: data });
@@ -76,7 +94,31 @@ export const db = {
     }
   },
 
+  // Optimized update for training status
   updateTrainingStatus: async (fullData: RawSalesData[]): Promise<void> => {
-    return db.saveData(fullData);
+     if (USE_SUPABASE && supabase) {
+        // FAST SAVE: Extract only the status map and save that.
+        // This payload is tiny (~KB) compared to the full dataset (~MB).
+        const statusMap: Record<string, string> = {};
+        
+        fullData.forEach(item => {
+           // We map the status by ID. 
+           // Only save status if it is meaningful (though saving all ensures consistency)
+           if (item.TrainingStatus) {
+              const id = getStaffId(item);
+              statusMap[id] = item.TrainingStatus;
+           }
+        });
+
+        const { error } = await supabase
+          .from('sales_data')
+          .upsert({ id: 'training_map', data: statusMap });
+        
+        if (error) throw error;
+
+     } else {
+        // Fallback for localstorage
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fullData));
+     }
   }
 };
