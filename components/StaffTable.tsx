@@ -34,22 +34,18 @@ export const StaffTable: React.FC<StaffTableProps> = ({ data, isAdmin, onUpdateS
   });
 
   const downloadReport = () => {
-    // Create clean data for export
+    // Create clean data for export - STRICTLY only allowed fields
     const exportData = sortedData.map(item => ({
       Code: item.displayCode,
       'Salesman Name': item.name,
       Showroom: item.showroom,
-      Counter: item.counter,
-      'Total Sales': item.totalSales,
-      'Cross Sales': item.crossSales,
-      'Cross Sale %': item.crossSalePercentage + '%',
       'Training Status': item.trainingStatus
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Training Report");
-    XLSX.writeFile(wb, "Sales_Training_Report.xlsx");
+    XLSX.writeFile(wb, "Training_Status_Report.xlsx");
   };
 
   return (
@@ -73,7 +69,7 @@ export const StaffTable: React.FC<StaffTableProps> = ({ data, isAdmin, onUpdateS
             onClick={downloadReport}
             className="px-3 py-1.5 text-xs font-medium bg-green-50 text-green-700 rounded-lg flex items-center gap-1 hover:bg-green-100 transition-colors"
           >
-            <Download size={12} /> Export
+            <Download size={12} /> Export Report
           </button>
         </div>
       </div>
@@ -165,3 +161,4 @@ export const StaffTable: React.FC<StaffTableProps> = ({ data, isAdmin, onUpdateS
     </div>
   );
 };
+    
