@@ -335,8 +335,14 @@ const App: React.FC = () => {
                 <BarChart data={metrics.topProducts} margin={{ top: 0, right: 0, left: 20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" tick={{fontSize: 12}} />
-                  <YAxis tickFormatter={(val) => `${val / 1000}k`} tick={{fontSize: 12}} />
-                  <ReTooltip formatter={(value: number) => [formatCurrency(value), 'Sales']} />
+                  <YAxis 
+                    tickFormatter={(val) => `${val / 1000}k`} 
+                    tick={isAdmin ? {fontSize: 12} : false} 
+                    width={isAdmin ? 60 : 10}
+                  />
+                  <ReTooltip 
+                    formatter={(value: number) => [isAdmin ? formatCurrency(value) : '***', 'Sales']} 
+                  />
                   <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />
                 </BarChart>
               </ResponsiveContainer>
