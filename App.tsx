@@ -22,7 +22,8 @@ const App: React.FC = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [notification, setNotification] = useState<{type: 'success' | 'error' | 'loading', message: string} | null>(null);
+  const [updatingStaffIds, setUpdatingStaffIds] = useState<Set<string>>(new Set());
 
   // Load initial data
   const loadData = async () => {
@@ -44,9 +45,9 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
-  // Clear notification after 3 seconds
+  // Clear notification after 5 seconds (unless it's loading)
   useEffect(() => {
-    if (notification) {
+    if (notification && notification.type !== 'loading') {
       const timer = setTimeout(() => setNotification(null), 5000);
       return () => clearTimeout(timer);
     }
@@ -54,7 +55,11 @@ const App: React.FC = () => {
 
   // Persist Training Status Changes
   const handleStatusUpdate = async (id: string, status: string) => {
-    // We update all raw records that match this staff ID.
+    // UI Feedback
+    setUpdatingStaffIds(prev => new Set(prev).add(id));
+    setNotification({ type: 'loading', message: 'Saving changes to database...' });
+
+    // 1. Calculate new state
     const newRawData = rawData.map(d => {
       const currentId = getStaffId(d);
       if (currentId === id) {
@@ -63,18 +68,30 @@ const App: React.FC = () => {
       return d;
     });
 
+    // 2. Optimistic Update
     setRawData(newRawData);
-    // Silent save in background
+
+    // 3. Persist
     try {
       await db.updateTrainingStatus(newRawData);
+      setNotification({ type: 'success', message: 'Status updated and saved successfully.' });
     } catch (e) {
       console.error("Failed to save status update", e);
-      setNotification({ type: 'error', message: 'Failed to save status change. Check internet.' });
+      setNotification({ type: 'error', message: 'Failed to save! Check internet or admin permissions.' });
+      // Note: We keep the optimistic update in UI, but warn user. 
+      // On reload it will revert if save failed.
+    } finally {
+      setUpdatingStaffIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
   const handleDataLoaded = async (data: RawSalesData[]) => {
     setIsSaving(true);
+    setNotification({ type: 'loading', message: 'Uploading large dataset...' });
     try {
       setRawData(data); // Optimistic update
       await db.saveData(data); // Persist to DB
@@ -121,11 +138,18 @@ const App: React.FC = () => {
       {/* Toast Notification */}
       {notification && (
         <div className={`fixed top-20 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 ${
-          notification.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+          notification.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 
+          notification.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
+          'bg-blue-50 text-blue-700 border border-blue-200'
         }`}>
-          {notification.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {notification.type === 'success' ? <CheckCircle size={16} /> : 
+           notification.type === 'error' ? <AlertCircle size={16} /> :
+           <RefreshCw size={16} className="animate-spin" />
+          }
           {notification.message}
-          <button onClick={() => setNotification(null)} className="ml-2 hover:opacity-75"><X size={14} /></button>
+          {notification.type !== 'loading' && (
+            <button onClick={() => setNotification(null)} className="ml-2 hover:opacity-75"><X size={14} /></button>
+          )}
         </div>
       )}
 
@@ -364,6 +388,7 @@ const App: React.FC = () => {
           data={staffData} 
           isAdmin={isAdmin} 
           onUpdateStatus={handleStatusUpdate}
+          updatingIds={updatingStaffIds}
         />
 
       </main>

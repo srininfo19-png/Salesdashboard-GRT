@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { ArrowUpDown, Download, Trophy, Medal } from 'lucide-react';
-import { AggregatedStaffData, TRAINING_STATUS_OPTIONS, TrainingStatusType } from '../types';
+import { ArrowUpDown, Download, Trophy, Loader2 } from 'lucide-react';
+import { AggregatedStaffData, TRAINING_STATUS_OPTIONS } from '../types';
 import { formatCurrency } from '../utils/dataHelpers';
 import * as XLSX from 'xlsx';
 
@@ -9,12 +9,13 @@ interface StaffTableProps {
   data: AggregatedStaffData[];
   isAdmin: boolean;
   onUpdateStatus: (id: string, status: string) => void;
+  updatingIds?: Set<string>;
 }
 
 type SortField = 'saleRank' | 'crossSaleRank' | 'totalSales' | 'crossSales';
 type SortOrder = 'asc' | 'desc';
 
-export const StaffTable: React.FC<StaffTableProps> = ({ data, isAdmin, onUpdateStatus }) => {
+export const StaffTable: React.FC<StaffTableProps> = ({ data, isAdmin, onUpdateStatus, updatingIds }) => {
   const [sortField, setSortField] = useState<SortField>('saleRank');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
@@ -132,16 +133,22 @@ export const StaffTable: React.FC<StaffTableProps> = ({ data, isAdmin, onUpdateS
 
                 <td className="px-6 py-4 font-bold text-gray-800">{staff.crossSalePercentage}%</td>
                 
-                <td className="px-6 py-4">
-                  <select 
-                    value={staff.trainingStatus}
-                    onChange={(e) => onUpdateStatus(staff.id, e.target.value)}
-                    className="bg-transparent text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:ring-0 text-gray-600 cursor-pointer py-1"
-                  >
-                    {TRAINING_STATUS_OPTIONS.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+                <td className="px-6 py-4 relative">
+                  <div className="flex items-center gap-2">
+                    <select 
+                      value={staff.trainingStatus}
+                      onChange={(e) => onUpdateStatus(staff.id, e.target.value)}
+                      disabled={updatingIds?.has(staff.id)}
+                      className={`bg-transparent text-xs border-0 border-b border-gray-200 focus:border-blue-500 focus:ring-0 text-gray-600 cursor-pointer py-1 ${updatingIds?.has(staff.id) ? 'opacity-50' : ''}`}
+                    >
+                      {TRAINING_STATUS_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    {updatingIds?.has(staff.id) && (
+                      <Loader2 size={14} className="animate-spin text-blue-500" />
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
