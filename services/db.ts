@@ -2,9 +2,24 @@ import { createClient } from '@supabase/supabase-js';
 import { RawSalesData } from '../types';
 
 // --- CONFIGURATION ---
+// Helper to safely get env vars in Vite or CRA environments
+const getEnv = (key: string, viteKey?: string) => {
+  // Check Vite (import.meta.env)
+  const meta = import.meta as any;
+  if (typeof meta !== 'undefined' && meta.env) {
+    if (viteKey && meta.env[viteKey]) return meta.env[viteKey];
+    if (meta.env[key]) return meta.env[key];
+  }
+  // Check Node/CRA (process.env)
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key];
+  }
+  return '';
+};
+
 // PASTE YOUR SUPABASE DETAILS HERE
-const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || 'https://mjwgbtivwbiwwaxkdftv.supabase.co';
-const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qd2didGl2d2Jpd3dheGtkZnR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MTYyNjIsImV4cCI6MjA4MTA5MjI2Mn0.BYPthvDD6A_hhVoZ__4FJN9fgO_AqmZlS-TF6o6MO_o';
+const SUPABASE_URL = getEnv('REACT_APP_SUPABASE_URL', 'VITE_SUPABASE_URL') || 'https://mjwgbtivwbiwwaxkdftv.supabase.co';
+const SUPABASE_KEY = getEnv('REACT_APP_SUPABASE_KEY', 'VITE_SUPABASE_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qd2didGl2d2Jpd3dheGtkZnR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MTYyNjIsImV4cCI6MjA4MTA5MjI2Mn0.BYPthvDD6A_hhVoZ__4FJN9fgO_AqmZlS-TF6o6MO_o';
 
 // Toggle this to TRUE to enable the database connection
 const USE_SUPABASE = true;
